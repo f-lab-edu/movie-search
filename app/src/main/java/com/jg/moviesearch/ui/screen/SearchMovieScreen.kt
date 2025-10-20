@@ -41,7 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.flowWithLifecycle
 import coil.compose.AsyncImage
 import com.jg.moviesearch.core.model.domain.MovieWithPoster
 import com.jg.moviesearch.ui.model.MovieUiEffect
@@ -50,6 +53,8 @@ import com.jg.moviesearch.ui.viewmodel.MovieDisplayItem
 import com.jg.moviesearch.ui.viewmodel.MovieViewModel
 import com.jg.moviesearch.ui.viewmodel.MovieDisplayType
 import com.jg.moviesearch.ui.viewmodel.MovieUiState
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun SearchMovieRoute(
@@ -61,28 +66,35 @@ fun SearchMovieRoute(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(viewModel.uiEffect) {
-        viewModel.uiEffect.collect { effect ->
-            when (effect) {
-                is MovieUiEffect.ShowError -> {
-                    snackbarHostState.showSnackbar(
-                        message = effect.message,
-                        duration = SnackbarDuration.Short
-                    )
-                }
+    LaunchedEffect(Unit) {
+        viewModel.uiEffect
+            .flowWithLifecycle(lifecycleOwner.lifecycle, Lifecycle.State.STARTED)
+            .collect { effect ->
+                when (effect) {
+                    is MovieUiEffect.ShowError -> {
+                        snackbarHostState.showSnackbar(
+                            message = effect.message,
+                            duration = SnackbarDuration.Short
+                        )
+                    }
 
-                is MovieUiEffect.NavigateToDetail -> {
-                    onMovieClickWithList(effect.movieList, effect.position)
+                    is MovieUiEffect.NavigateToDetail -> {
+                        onMovieClickWithList(effect.movieList, effect.position)
+                    }
                 }
-            }
         }
     }
 
     // 무한 스크롤 감지
-    LaunchedEffect(listState) {
+    LaunchedEffect(uiState.hasMoreData, uiState.isLoadingMore) {
+        if (!uiState.hasMoreData || uiState.isLoadingMore)
+            return@LaunchedEffect
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .distinctUntilChanged()
             .collect { lastVisibleItemIndex ->
                 if (lastVisibleItemIndex != null) {
                     if (viewModel.shouldLoadMore(lastVisibleItemIndex)) {
