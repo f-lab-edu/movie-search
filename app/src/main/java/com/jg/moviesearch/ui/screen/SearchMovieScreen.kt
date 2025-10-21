@@ -63,7 +63,6 @@ fun SearchMovieRoute(
     viewModel: MovieViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -107,7 +106,7 @@ fun SearchMovieRoute(
     SearchMovieScreen(
         modifier = modifier,
         uiState = uiState,
-        searchQuery = searchQuery,
+        searchQuery = uiState.searchQuery,
         listState = listState,
         snackbarHostState = snackbarHostState,
         onAction = { action ->
