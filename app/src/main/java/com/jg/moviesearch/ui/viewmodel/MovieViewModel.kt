@@ -66,20 +66,14 @@ class MovieViewModel @Inject constructor(
                             message = it.message ?: "Unknown error",
                             prefix = "영화 검색 실패"
                         )
+                        emit(emptyList())
                     }
             }
             .onEach { movie ->
-                runCatching {
-                    if (movie.isEmpty()) {
-                        handleSearchEmpty()
-                    } else {
-                        handleSearchSuccess(movies = movie)
-                    }
-                }.onFailure {
-                    handleError(
-                        message = it.message ?: "Unknown error",
-                        prefix = "영화 검색 실패"
-                    )
+                if (movie.isEmpty()) {
+                    handleSearchEmpty()
+                } else {
+                    handleSearchSuccess(movies = movie)
                 }
             }.launchIn(viewModelScope)
     }
