@@ -1,5 +1,6 @@
 package com.jg.moviesearch.ui.viewmodel
 
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jg.moviesearch.core.domain.repository.MovieRepository
@@ -19,6 +20,8 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -31,15 +34,9 @@ class MovieViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MovieUiState())
     val uiState: StateFlow<MovieUiState> = _uiState.asStateFlow()
 
-    // 실시간 검색을 위한 검색어
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _uiEffect = MutableSharedFlow<MovieUiEffect>()
     val uiEffect: SharedFlow<MovieUiEffect> = _uiEffect.asSharedFlow()
-
-    // 현재 검색 쿼리
-    private var currentSearchQuery: String = ""
 
     // ==================== 초기화 ====================
     init {
@@ -52,11 +49,12 @@ class MovieViewModel @Inject constructor(
     // 실시간 검색 설정
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun setupRealTimeSearch() {
-        _searchQuery
+        _uiState
+            .map { it.searchQuery }
+            .distinctUntilChanged()
             .debounce(300)
             .filter { it.trim().isNotEmpty() }
             .onEach { query ->
-                currentSearchQuery = query.trim()
                 resetSearchState()
                 showLoading()
             }
@@ -68,24 +66,25 @@ class MovieViewModel @Inject constructor(
                             message = it.message ?: "Unknown error",
                             prefix = "영화 검색 실패"
                         )
+                        emit(emptyList())
                     }
             }
-            .onEach {
-                if (it.isEmpty()) {
+            .onEach { movie ->
+                if (movie.isEmpty()) {
                     handleSearchEmpty()
                 } else {
-                    handleSearchSuccess(movies = it)
+                    handleSearchSuccess(movies = movie)
                 }
-            }
-            .launchIn(viewModelScope)
+            }.launchIn(viewModelScope)
     }
 
     // 검색어 업데이트
     fun updateSearchQuery(query: String) {
-        _searchQuery.value = query
-        if (query.trim().length >= 2) {
-            showLoading()
-        } else if (query.trim().isEmpty()) {
+        _uiState.update {
+            it.copy(searchQuery = query)
+        }
+
+        if (query.trim().isEmpty()) {
             clearSearchResults()
         }
     }
@@ -105,7 +104,7 @@ class MovieViewModel @Inject constructor(
     fun loadMoreMovies() {
         val currentState = _uiState.value
 
-        if (currentState.isLoadingMore || !currentState.hasMoreData || currentSearchQuery.isEmpty()) {
+        if (currentState.isLoadingMore || !currentState.hasMoreData || currentState.searchQuery.isEmpty()) {
             return
         }
 
@@ -113,7 +112,7 @@ class MovieViewModel @Inject constructor(
             state.copy(isLoadingMore = true)
         }
 
-        movieRepository.searchMoviesWithPoster(currentSearchQuery, currentState.currentPage + 1)
+        movieRepository.searchMoviesWithPoster(currentState.searchQuery, currentState.currentPage + 1)
             .catch { e ->
                 handleError(
                     message = e.message ?: "Unknown error",
@@ -293,6 +292,7 @@ class MovieViewModel @Inject constructor(
 }
 
 data class MovieUiState(
+    val searchQuery: String = "",
     val movies: List<MovieWithPoster> = emptyList(),
     val processedMovies: List<MovieDisplayItem> = emptyList(), // 추가
     val isLoading: Boolean = false,
